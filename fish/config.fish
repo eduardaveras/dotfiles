@@ -21,6 +21,7 @@ fish_add_path $DOTFILES/scripts
 # Alias
 alias cg="chat"
 alias bat="batcat"
+alias b __cd_back_to
 alias dot="cd $DOTFILES"
 
 # Autorun Tmux
