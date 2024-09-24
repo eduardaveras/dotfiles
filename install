@@ -1,0 +1,81 @@
+#!/usr/bin/env fish
+# Check if yq is installed
+if not command -v yq >/dev/null
+    echo "error: yq is not installed. Please install yq to proceed."
+    exit 1
+end
+
+# Define the directory where this script is located
+set dir (dirname (realpath (status --current-filename)))
+set -U DOTFILES $dir
+echo "-> DOTFILES is set to $DOTFILES"
+
+# Read config file
+set config_file "$DOTFILES/install.yaml"
+function execute_commands -a commands
+    for command in (string split "\n" $commands)
+        echo "  | $command"
+        eval $command
+
+        if test $status -ne 0
+            echo "Error executing previous command, continuing..."
+        end
+
+    end
+end
+
+# Read and execute the list of pre-commands listed in $DOTFILES/install.yaml
+set pre_commands (yq eval '.pre_commands[]' $config_file)
+echo "-> Executing pre-commands..."
+execute_commands $pre_commands
+
+# Create the symbolic links
+set symlinks (yq eval '.symlinks[]' $config_file)
+set symlinks_darwin (yq eval '.symlinks-darwin[]' $config_file)
+set symlinks_linux (yq eval '.symlinks-linux[]' $config_file)
+
+if uname -s | string match -r 'Darwin'
+    echo "-> ! Detected macOS, adding macOS symlinks"
+    set symlinks $symlinks_darwin $symlinks
+end
+
+if uname -s | string match -r 'Linux'
+    echo "-> ! Detected Linux, adding Linux symlinks..."
+    set symlinks $symlinks_linux $symlinks
+end
+
+echo "-> Creating symbolic links..."
+
+function create_symlink -a source -a dest
+    # Check if the symlink already exists
+    if test -L $dest
+        echo "Removing existing symlink: $dest"
+        rm $dest
+    else if test -e $dest
+        echo "Warning: $dest already exists and is not a symlink, backup"
+        mv $dest $dest.backup
+        echo "$dest -> $dest.backup"
+    end
+
+    eval "ln -sf $source $dest"
+    if not test $status -ne 0
+        echo "  | $dest -> $source"
+    end
+end
+
+for symlink in $symlinks
+    set key_value (string split ":" $symlink)
+
+    set source (string trim -c " " $key_value[1])
+    set source (eval "echo $source")
+
+    set dest (string trim -c " " $key_value[2])
+    set dest (eval "echo $dest")
+
+    create_symlink $dest $source
+end
+
+# Same but post
+set post_commands (yq eval '.post_commands[]' $config_file)
+echo "-> Executing post-commands..."
+execute_commands $post_commands
